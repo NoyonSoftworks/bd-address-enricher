@@ -29,15 +29,14 @@ with st.expander("🗂 Gazetteer & Cache (optional)"):
     retry_flag = st.checkbox("Retry online for rows that remain Not found", value=True)
     st.caption("💡 Tip: Start with **offline** for speed, then **auto** for unresolved rows.")
 
-    # ---------- Fetch Full Gazetteer (robust to column changes) ----------
+    # ---------- Fetch Full Gazetteer (robust to changing columns) ----------
     def fetch_full_gazetteer() -> pd.DataFrame:
         DIST_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/districts/districts.csv"
         UPAZ_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/upazilas/upazilas.csv"
         dist = pd.read_csv(DIST_URL, encoding="utf-8", engine="python")
         upaz = pd.read_csv(UPAZ_URL, encoding="utf-8", engine="python")
 
-        # auto-detect id/name columns
-        def pick_name(cols):  # any column containing 'name'
+        def pick_name(cols):
             for c in cols:
                 if "name" in c.lower(): return c
             return cols[0]
@@ -98,31 +97,44 @@ if st.button("⚙️ Process & Download", type="primary"):
         with st.spinner("Processing your file... Please wait ⏳"):
             os.makedirs("tmp", exist_ok=True)
             in_path = os.path.join("tmp", "input.xlsx")
-            with open(in_path, "wb") as f: f.write(uploaded.getbuffer())
+            with open(in_path, "wb") as f:
+                f.write(uploaded.getbuffer())
 
             # Gazetteer path (uploaded or built)
             gaz_path = None
             built = os.path.join("tmp", "bangladesh_thana_district.csv")
             if gaz is not None:
                 gaz_path = built
-                with open(gaz_path, "wb") as f: f.write(gaz.getbuffer())
+                with open(gaz_path, "wb") as f:
+                    f.write(gaz.getbuffer())
             elif os.path.exists(built):
                 gaz_path = built
 
             cache_path = None
             if cache_csv is not None:
                 cache_path = os.path.join("tmp", "cache_geocode.csv")
-                with open(cache_path, "wb") as f: f.write(cache_csv.getbuffer())
+                with open(cache_path, "wb") as f:
+                    f.write(cache_csv.getbuffer())
             else:
                 cache_path = "cache_geocode.csv"
 
             out_path = os.path.join("tmp", "output.xlsx")
-            enrich_run(input_xlsx=in_path, output_xlsx=out_path,
-                       address_col=(address_col if address_col.strip() else None),
-                       mode=mode, gazetteer_csv=gaz_path if gaz_path else None,
-                       cache_path=cache_path, sheet_index=int(sheet_index),
-                       retry_online_notfound=bool(retry_flag))
+            enrich_run(
+                input_xlsx=in_path,
+                output_xlsx=out_path,
+                address_col=(address_col if address_col.strip() else None),
+                mode=mode,
+                gazetteer_csv=gaz_path if gaz_path else None,
+                cache_path=cache_path,
+                sheet_index=int(sheet_index),
+                retry_online_notfound=bool(retry_flag),
+            )
 
         with open(out_path, "rb") as f:
             st.download_button("⬇️ Download Enriched Excel", f, file_name="address_enriched.xlsx")
         st.success("✅ Done! Offline + Online enrichment completed.")
+
+st.markdown("---")
+st.markdown("<div style='text-align:center;color:#475569;font-size:13px;'>"
+            "Made with ❤️ by <b>NoyonSoftworks</b> | Powered by Streamlit & OpenStreetMap</div>",
+            unsafe_allow_html=True)
