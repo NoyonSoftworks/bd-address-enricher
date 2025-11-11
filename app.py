@@ -34,46 +34,74 @@ with st.expander("🗂 Gazetteer & Cache (optional)"):
     retry_flag = st.checkbox("Retry online for rows that remain Not found", value=True)
     st.caption("💡 Tip: Start with **offline** for speed, then **auto** for unresolved rows.")
 
-    # ---------- Fetch Full Gazetteer (robust; never numeric) ----------
+    # ---------- Fetch Full Gazetteer (robust; never numeric; never 0 rows) ----------
     def fetch_full_gazetteer() -> pd.DataFrame:
-    DIST_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/districts/districts.csv"
-    UPAZ_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/upazilas/upazilas.csv"
+        DIST_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/districts/districts.csv"
+        UPAZ_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/upazilas/upazilas.csv"
 
-    # Load with flexible encoding
-    dist = pd.read_csv(DIST_URL, encoding="utf-8", engine="python")
-    upaz = pd.read_csv(UPAZ_URL, encoding="utf-8", engine="python")
+        # Load source CSVs (tolerant)
+        dist = pd.read_csv(DIST_URL, encoding="utf-8", engine="python")
+        upaz = pd.read_csv(UPAZ_URL, encoding="utf-8", engine="python")
 
-    # Try to detect columns dynamically
-    def detect(df, possible_names):
-        for name in possible_names:
-            for col in df.columns:
-                if name.lower() in col.lower():
-                    return col
-        return df.columns[0]
+        # Column detectors (cover all common variants)
+        def detect(df: pd.DataFrame, candidates: list[str], *, required=False):
+            for want in candidates:
+                for col in df.columns:
+                    if want.lower() in col.lower():
+                        return col
+            if required:
+                # fall back to first column, but caller will validate later
+                return df.columns[0]
+            return None
 
-    # district file columns
-    d_id = detect(dist, ["id", "district_id", "code"])
-    d_name = detect(dist, ["district_name", "name", "en_name", "bn_name"])
+        # districts.csv
+        d_id   = detect(dist, ["district_id", "id", "code"], required=True)
+        d_name = detect(dist, ["district_name", "name", "en_name"]) or detect(dist, ["bn_name"], required=True)
 
-    # upazila file columns
-    u_did = detect(upaz, ["district_id", "district_code", "parent_id"])
-    u_name = detect(upaz, ["upazila_name", "upazila", "name", "en_name", "bn_name"])
+        # upazilas.csv
+        u_did  = detect(upaz, ["district_id", "district_code", "parent_id"], required=True)
+        u_name = detect(upaz, ["upazila_name", "upazila", "name", "en_name"]) or detect(upaz, ["bn_name"], required=True)
 
-    merged = upaz.merge(dist, left_on=u_did, right_on=d_id, how="left")
+        merged = upaz.merge(dist, left_on=u_did, right_on=d_id, how="left")
 
-    df = pd.DataFrame({
-        "thana": merged[u_name].astype(str).str.strip().str.title(),
-        "district": merged[d_name].astype(str).str.strip().str.title()
-    }).dropna()
+        df = pd.DataFrame({
+            "thana": merged[u_name].astype(str).str.strip().str.title(),
+            "district": merged[d_name].astype(str).str.strip().str.title()
+        })
 
-    # Filter out numeric or blank values
-    import re
-    numeric = re.compile(r"^\s*\d+([/.,-]\d+)*\s*$")
-    df = df[~df["thana"].str.match(numeric)]
-    df = df[~df["district"].str.match(numeric)]
+        # Remove blanks & numeric-only (e.g., "10", "2/45/5/162")
+        import re
+        numeric_only = re.compile(r"^\s*\d+([/.,-]\d+)*\s*$")
+        df = df[(df["thana"] != "") & (df["district"] != "")]
+        df = df[~df["thana"].str.match(numeric_only)]
+        df = df[~df["district"].str.match(numeric_only)]
 
-    df = df.drop_duplicates().sort_values(["district", "thana"]).reset_index(drop=True)
-    return df
+        df = df.dropna().drop_duplicates().sort_values(["district", "thana"]).reset_index(drop=True)
+
+        if df.empty:
+            # Helpful debug for user
+            st.warning(f"No rows built. Debug:\n"
+                       f"district-id='{d_id}', district-name='{d_name}', "
+                       f"upazila-district-id='{u_did}', upazila-name='{u_name}'.")
+        return df
+
+    if st.button("🌐 Fetch Full Gazetteer (All districts + all thanas)"):
+        with st.spinner("Downloading full Bangladesh gazetteer from GitHub…"):
+            try:
+                df_gaz = fetch_full_gazetteer()
+                os.makedirs("tmp", exist_ok=True)
+                full_path = os.path.join("tmp", "bangladesh_thana_district.csv")
+                df_gaz.to_csv(full_path, index=False, encoding="utf-8")
+                st.success(f"✅ Built {len(df_gaz):,} rows (Upazila/Thana vs District)")
+                with open(full_path, "rb") as f:
+                    st.download_button("⬇️ Download bangladesh_thana_district.csv", f,
+                                       file_name="bangladesh_thana_district.csv")
+                st.caption("Tip: Upload this CSV below so Offline/Auto mode hits ~100% without going online.")
+            except Exception as e:
+                st.error(f"Build failed: {e}")
+                st.info("You can still upload a custom CSV if you have one.")
+
+st.markdown("---")
 
 # ---------------- Demo Downloads ----------------
 l, r = st.columns(2)
