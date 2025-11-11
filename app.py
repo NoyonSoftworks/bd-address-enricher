@@ -45,6 +45,7 @@ sheet_index = col3.number_input("Sheet index (0-based)", min_value=0, value=0, s
 with st.expander("🗂 Gazetteer & Cache (optional)"):
     gaz = st.file_uploader("Upload `bangladesh_thana_district.csv` (thana/upazila/area,district)", type=["csv"])
     cache_csv = st.file_uploader("Upload existing `cache_geocode.csv` (address,district,thana)", type=["csv"])
+    retry_flag = st.checkbox("Retry online for rows that remain Not found", value=True)
     st.caption("💡 Tip: Start with **offline** for speed, then **auto** for unresolved rows.")
 
 st.markdown("---")
@@ -122,9 +123,9 @@ if process:
             gazetteer_csv=gaz_path if gaz_path else None,
             cache_path=cache_path,
             sheet_index=int(sheet_index),
+            retry_online_notfound=bool(retry_flag),
         )
 
-    # Offer the result
     with open(out_path, "rb") as f:
         st.download_button("⬇️ Download Enriched Excel", f, file_name="address_enriched.xlsx")
 
