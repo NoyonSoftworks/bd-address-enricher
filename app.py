@@ -90,20 +90,17 @@ if process:
         st.stop()
 
     with st.spinner("Processing your file... Please wait ⏳"):
-        # Temp workspace
         os.makedirs("tmp", exist_ok=True)
         in_path = os.path.join("tmp", "input.xlsx")
         with open(in_path, "wb") as f:
             f.write(uploaded.getbuffer())
 
-        # Optional gazetteer
         gaz_path = None
         if gaz is not None:
             gaz_path = os.path.join("tmp", "bangladesh_thana_district.csv")
             with open(gaz_path, "wb") as f:
                 f.write(gaz.getbuffer())
 
-        # Optional cache
         cache_path = None
         if cache_csv is not None:
             cache_path = os.path.join("tmp", "cache_geocode.csv")
@@ -114,7 +111,6 @@ if process:
 
         out_path = os.path.join("tmp", "output.xlsx")
 
-        # Run enrichment (auto/offline/online)
         enrich_run(
             input_xlsx=in_path,
             output_xlsx=out_path,
