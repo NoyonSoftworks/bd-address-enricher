@@ -4,9 +4,10 @@ import pandas as pd
 import streamlit as st
 from address_enricher import run as enrich_run
 
+# --- Page Setup ---
 st.set_page_config(page_title="BD Address Enricher", page_icon="🗺️", layout="wide")
 
-# ---- Simple brand header ----
+# --- Custom CSS / Branding ---
 st.markdown("""
 <style>
 .main { padding-top: 1rem; }
@@ -16,31 +17,40 @@ st.markdown("""
   background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; margin-left:8px;
 }
 .footer-note { color:#64748b; font-size:12px; }
+.header-title {
+  text-align:center; padding:10px; border-radius:16px;
+  background:linear-gradient(90deg, #2563eb, #1e3a8a);
+  color:white; font-size:32px; font-weight:700;
+  box-shadow:0 2px 6px rgba(0,0,0,0.2);
+}
+.subtext {text-align:center; font-size:15px; color:#475569; margin-bottom:20px;}
 hr { border: none; height: 1px; background: #e2e8f0; margin: 1rem 0; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🗺️ Bangladesh Address Enricher")
-st.write("Excel → **District** & **Thana** in one click.")
+# --- Header / Banner ---
+st.markdown('<div class="header-title">🗺️ Bangladesh Address Enricher</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtext">Automatically detect District & Thana from any Excel file</div>', unsafe_allow_html=True)
 st.markdown('<span class="badge">Auto mode: Offline ➜ Online fallback</span>', unsafe_allow_html=True)
 st.markdown("---")
 
-# ---- Controls ----
-uploaded = st.file_uploader("Upload Excel (.xlsx) with an **Address** column", type=["xlsx"])
+# --- File Upload ---
+uploaded = st.file_uploader("📤 Upload Excel (.xlsx) with an **Address** column", type=["xlsx"])
 col1, col2, col3 = st.columns(3)
 mode = col1.selectbox("Mode", options=["auto", "offline", "online"], index=0,
                       help="auto = Offline first, then only missing via Online (OSM)")
 address_col = col2.text_input("Address column name (optional; auto-detects)", value="")
 sheet_index = col3.number_input("Sheet index (0-based)", min_value=0, value=0, step=1)
 
-with st.expander("Gazetteer & Cache (optional)"):
+# --- Gazetteer & Cache Upload ---
+with st.expander("🗂 Gazetteer & Cache (optional)"):
     gaz = st.file_uploader("Upload `bangladesh_thana_district.csv` (thana/upazila/area,district)", type=["csv"])
     cache_csv = st.file_uploader("Upload existing `cache_geocode.csv` (address,district,thana)", type=["csv"])
-    st.caption("Tip: Start with offline for speed, then auto for unresolved rows.")
+    st.caption("💡 Tip: Start with offline for speed, then auto for unresolved rows.")
 
 st.markdown("---")
 
-# --- Two demo download buttons side by side ---
+# --- Demo Downloads ---
 colL, colR = st.columns(2)
 demo_gaz = colL.button("⬇️ Download Sample Gazetteer CSV")
 demo_addr = colR.button("📥 Download Sample Address File (Excel)")
@@ -67,7 +77,7 @@ if demo_addr:
 
 st.markdown("---")
 
-# ---- Run the enrichment process ----
+# --- Process Section ---
 process = st.button("⚙️ Process & Download", type="primary")
 
 if process:
@@ -75,7 +85,7 @@ if process:
         st.error("Please upload an Excel (.xlsx) file first.")
         st.stop()
 
-    with st.spinner("Processing... Please wait..."):
+    with st.spinner("Processing your file... Please wait ⏳"):
         os.makedirs("tmp", exist_ok=True)
         in_path = os.path.join("tmp", "input.xlsx")
         with open(in_path, "wb") as f:
@@ -112,3 +122,10 @@ if process:
 
     st.success("✅ Done! You can now tweak modes or upload a larger CSV gazetteer for full coverage.")
     st.markdown('<div class="footer-note">If many rows go to Online, please re-run later — cache speeds things up and respects OSM limits.</div>', unsafe_allow_html=True)
+
+# --- Footer ---
+st.markdown("---")
+st.markdown(
+    '<div style="text-align:center; color:#475569; font-size:13px;">Made with ❤️ by <b>NoyonSoftworks</b> | Powered by Streamlit & OpenStreetMap</div>',
+    unsafe_allow_html=True
+)
