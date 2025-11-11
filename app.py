@@ -30,7 +30,7 @@ sheet_index = c3.number_input("Sheet index (0-based)", min_value=0, value=0, ste
 # =============================================================================
 with st.expander("🗂 Gazetteer & Cache (build • merge • grow)"):
     st.caption("Use any (thana/upazila/area,district) CSVs. Tool will clean, merge, and dedupe.")
-    # ---- Multiple CSV upload & merge ----
+
     gaz_files = st.file_uploader(
         "Upload one or more Gazetteer CSVs (you can add client lists too)",
         type=["csv"], accept_multiple_files=True
@@ -47,21 +47,24 @@ with st.expander("🗂 Gazetteer & Cache (build • merge • grow)"):
         part = df[[th, di]].rename(columns={th: "thana", di: "district"})
         part["thana"] = part["thana"].astype(str).str.strip().str.title()
         part["district"] = part["district"].astype(str).str.strip().str.title()
+        # FIX: no .str.eq(); use lowercase compare
         part = part[
-            (part["thana"]!="") & (part["district"]!="") &
+            (part["thana"] != "") & (part["district"] != "") &
             (~part["thana"].str.match(NUMERIC)) & (~part["district"].str.match(NUMERIC)) &
-            (~part["thana"].str.eq("Not Found", case=False)) &
-            (~part["district"].str.eq("Not Found", case=False))
+            (part["thana"].str.strip().str.lower() != "not found") &
+            (part["district"].str.strip().str.lower() != "not found")
         ]
         return part
 
     def merge_gazetteers(file_list) -> str | None:
-        if not file_list: return None
+        if not file_list:
+            return None
         frames = []
         for up in file_list:
             df = pd.read_csv(io.BytesIO(up.read()), encoding="utf-8", engine="python", on_bad_lines="skip")
             frames.append(_clean_df(df))
-        if not frames: return None
+        if not frames:
+            return None
         out = (pd.concat(frames, ignore_index=True)
                .drop_duplicates()
                .sort_values(["district","thana"])
@@ -72,14 +75,15 @@ with st.expander("🗂 Gazetteer & Cache (build • merge • grow)"):
         st.success(f"✅ Merged gazetteer: {len(out):,} rows")
         return p
 
-    # ---- Starter gazetteer (curated; safe baseline) ----
     def build_starter() -> str:
         data = {
             "Dhaka": ["Gulshan","Banani","Badda","Uttara","Khilkhet","Mohammadpur","Tejgaon","Dhanmondi",
-                      "Rampura","Jatrabari","Wari","Motijheel","Kafrul","Cantonment","Baridhara","Bashundhara R/A","Bosila","Khilgaon"],
+                      "Rampura","Jatrabari","Wari","Motijheel","Kafrul","Cantonment","Baridhara",
+                      "Bashundhara R/A","Bosila","Khilgaon"],
             "Gazipur": ["Tongi","Joydebpur","Kaliakair","Kaliganj","Sreepur"],
             "Narayanganj": ["Sadar","Sonargaon","Rupganj","Araihazar","Siddhirganj","Bandar","Fatulla"],
-            "Chattogram": ["Kotwali","Pahartali","Double Mooring","Halishahar","Patenga","Bakalia","Panchlaish","Chandgaon","Bayazid","Akbar Shah"],
+            "Chattogram": ["Kotwali","Pahartali","Double Mooring","Halishahar","Patenga","Bakalia",
+                           "Panchlaish","Chandgaon","Bayazid","Akbar Shah"],
             "Sylhet": ["Subidbazar","South Surma","Kotwali Sylhet","Moglabazar","Ambarkhana","Osmani Nagar","Beanibazar"],
             "Comilla": ["Adarsa Sadar","Kotwali Comilla","Daudkandi","Chandina","Homna","Burichang"],
             "Khulna": ["Sonadanga","Daulatpur","Khalishpur","Khulna Kotwali","Rupsha"],
@@ -106,7 +110,7 @@ with st.expander("🗂 Gazetteer & Cache (build • merge • grow)"):
     if cB.button("➕ Merge Uploaded Gazetteers"):
         merge_gazetteers(gaz_files)
 
-    # ---- Grow from cache ----
+    # ---- Grow from cache (FIXED filters) ----
     with cC:
         if st.button("🔁 Grow Gazetteer from Cache"):
             try:
@@ -114,10 +118,12 @@ with st.expander("🗂 Gazetteer & Cache (build • merge • grow)"):
                 if cache_csv is not None:
                     os.makedirs("tmp", exist_ok=True)
                     cache_path = os.path.join("tmp","cache_geocode.csv")
-                    with open(cache_path,"wb") as f: f.write(cache_csv.getbuffer())
+                    with open(cache_path,"wb") as f:
+                        f.write(cache_csv.getbuffer())
                 dfc = pd.read_csv(cache_path, encoding="utf-8", engine="python")
                 cols = {c.lower(): c for c in dfc.columns}
-                dcol = cols.get("district"); tcol = cols.get("thana")
+                dcol = cols.get("district")
+                tcol = cols.get("thana")
                 if not (dcol and tcol):
                     st.error("Cache must have columns: address,district,thana")
                 else:
@@ -125,11 +131,12 @@ with st.expander("🗂 Gazetteer & Cache (build • merge • grow)"):
                              .dropna())
                     pairs["district"] = pairs["district"].astype(str).str.strip().str.title()
                     pairs["thana"]    = pairs["thana"].astype(str).str.strip().str.title()
+                    # FIX: no .str.eq(); use lowercase compare
                     pairs = pairs[
-                        (pairs["district"]!="") & (pairs["thana"]!="") &
+                        (pairs["district"] != "") & (pairs["thana"] != "") &
                         (~pairs["district"].str.match(NUMERIC)) & (~pairs["thana"].str.match(NUMERIC)) &
-                        (~pairs["district"].str.eq("Not Found", case=False)) &
-                        (~pairs["thana"].str.eq("Not Found", case=False))
+                        (pairs["district"].str.strip().str.lower() != "not found") &
+                        (pairs["thana"].str.strip().str.lower() != "not found")
                     ].drop_duplicates().sort_values(["district","thana"])
                     base_path = os.path.join("tmp","bangladesh_thana_district.csv")
                     if os.path.exists(base_path):
@@ -159,7 +166,8 @@ if st.button("⚙️ Process & Download", type="primary"):
         with st.spinner("Processing your file... ⏳"):
             os.makedirs("tmp", exist_ok=True)
             in_path = os.path.join("tmp","input.xlsx")
-            with open(in_path,"wb") as f: f.write(uploaded.getbuffer())
+            with open(in_path,"wb") as f:
+                f.write(uploaded.getbuffer())
 
             # Choose gazetteer priority: merged/starter > uploaded single > nothing
             gaz_path = None
@@ -173,7 +181,8 @@ if st.button("⚙️ Process & Download", type="primary"):
             cache_path = "cache_geocode.csv"
             if cache_csv is not None:
                 cache_path = os.path.join("tmp","cache_geocode.csv")
-                with open(cache_path,"wb") as f: f.write(cache_csv.getbuffer())
+                with open(cache_path,"wb") as f:
+                    f.write(cache_csv.getbuffer())
 
             out_path = os.path.join("tmp","output.xlsx")
             enrich_run(
