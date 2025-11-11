@@ -36,59 +36,44 @@ with st.expander("🗂 Gazetteer & Cache (optional)"):
 
     # ---------- Fetch Full Gazetteer (robust; never numeric) ----------
     def fetch_full_gazetteer() -> pd.DataFrame:
-        DIST_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/districts/districts.csv"
-        UPAZ_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/upazilas/upazilas.csv"
+    DIST_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/districts/districts.csv"
+    UPAZ_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/upazilas/upazilas.csv"
 
-        dist = pd.read_csv(DIST_URL, encoding="utf-8", engine="python")
-        upaz = pd.read_csv(UPAZ_URL, encoding="utf-8", engine="python")
+    # Load with flexible encoding
+    dist = pd.read_csv(DIST_URL, encoding="utf-8", engine="python")
+    upaz = pd.read_csv(UPAZ_URL, encoding="utf-8", engine="python")
 
-        # find columns by intent (handles: id, code, district_id, name, district_name, upazila_name, bn_name, etc.)
-        def find_col(df: pd.DataFrame, keywords: list[str], default_first=True):
-            cols = list(df.columns)
-            for c in cols:
-                lc = c.lower()
-                if any(k in lc for k in keywords):
-                    return c
-            return cols[0] if default_first else None
+    # Try to detect columns dynamically
+    def detect(df, possible_names):
+        for name in possible_names:
+            for col in df.columns:
+                if name.lower() in col.lower():
+                    return col
+        return df.columns[0]
 
-        d_id   = find_col(dist, ["district_id", "id", "code"])
-        d_name = find_col(dist, ["district_name", "name"])     # prefer name-like
-        u_did  = find_col(upaz, ["district_id", "district_code", "parent_id"])
-        u_name = find_col(upaz, ["upazila_name", "upazila", "name"])  # prefer upazila name
+    # district file columns
+    d_id = detect(dist, ["id", "district_id", "code"])
+    d_name = detect(dist, ["district_name", "name", "en_name", "bn_name"])
 
-        merged = upaz.merge(dist, left_on=u_did, right_on=d_id, how="left")
+    # upazila file columns
+    u_did = detect(upaz, ["district_id", "district_code", "parent_id"])
+    u_name = detect(upaz, ["upazila_name", "upazila", "name", "en_name", "bn_name"])
 
-        df = pd.DataFrame({
-            "thana": merged[u_name].astype(str).str.strip().str.title(),
-            "district": merged[d_name].astype(str).str.strip().str.title()
-        }).dropna()
+    merged = upaz.merge(dist, left_on=u_did, right_on=d_id, how="left")
 
-        # remove numeric-only rows (e.g., "10", "2/45/5/162")
-        import re
-        numeric_only = re.compile(r"^\s*\d+([/.,-]\d+)*\s*$")
-        df = df[~df["thana"].str.match(numeric_only)]
-        df = df[~df["district"].str.match(numeric_only)]
+    df = pd.DataFrame({
+        "thana": merged[u_name].astype(str).str.strip().str.title(),
+        "district": merged[d_name].astype(str).str.strip().str.title()
+    }).dropna()
 
-        df = df.drop_duplicates().sort_values(["district", "thana"]).reset_index(drop=True)
-        return df
+    # Filter out numeric or blank values
+    import re
+    numeric = re.compile(r"^\s*\d+([/.,-]\d+)*\s*$")
+    df = df[~df["thana"].str.match(numeric)]
+    df = df[~df["district"].str.match(numeric)]
 
-    if st.button("🌐 Fetch Full Gazetteer (All districts + all thanas)"):
-        with st.spinner("Downloading full Bangladesh gazetteer from GitHub…"):
-            try:
-                df_gaz = fetch_full_gazetteer()
-                os.makedirs("tmp", exist_ok=True)
-                full_path = os.path.join("tmp", "bangladesh_thana_district.csv")
-                df_gaz.to_csv(full_path, index=False, encoding="utf-8")
-                st.success(f"✅ Built {len(df_gaz):,} rows (Upazila/Thana vs District)")
-                with open(full_path, "rb") as f:
-                    st.download_button("⬇️ Download bangladesh_thana_district.csv", f,
-                                       file_name="bangladesh_thana_district.csv")
-                st.caption("Tip: Upload this CSV below so Offline/Auto mode hits ~100% without going online.")
-            except Exception as e:
-                st.error(f"Build failed: {e}")
-                st.info("You can still upload a custom CSV if you have one.")
-
-st.markdown("---")
+    df = df.drop_duplicates().sort_values(["district", "thana"]).reset_index(drop=True)
+    return df
 
 # ---------------- Demo Downloads ----------------
 l, r = st.columns(2)
