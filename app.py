@@ -1,7 +1,5 @@
-
 import io
 import os
-import time
 import pandas as pd
 import streamlit as st
 from address_enricher import run as enrich_run
@@ -14,8 +12,8 @@ st.markdown("""
 .main { padding-top: 1rem; }
 .block-container { padding-top: 1rem; }
 .badge {
-  display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; background:#eef2ff; color:#3730a3;
-  border:1px solid #c7d2fe; margin-left:8px;
+  display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px;
+  background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; margin-left:8px;
 }
 .footer-note { color:#64748b; font-size:12px; }
 hr { border: none; height: 1px; background: #e2e8f0; margin: 1rem 0; }
@@ -24,13 +22,11 @@ hr { border: none; height: 1px; background: #e2e8f0; margin: 1rem 0; }
 
 st.title("🗺️ Bangladesh Address Enricher")
 st.write("Excel → **District** & **Thana** in one click.")
-
 st.markdown('<span class="badge">Auto mode: Offline ➜ Online fallback</span>', unsafe_allow_html=True)
 st.markdown("---")
 
 # ---- Controls ----
 uploaded = st.file_uploader("Upload Excel (.xlsx) with an **Address** column", type=["xlsx"])
-
 col1, col2, col3 = st.columns(3)
 mode = col1.selectbox("Mode", options=["auto", "offline", "online"], index=0,
                       help="auto = Offline first, then only missing via Online (OSM)")
@@ -42,24 +38,44 @@ with st.expander("Gazetteer & Cache (optional)"):
     cache_csv = st.file_uploader("Upload existing `cache_geocode.csv` (address,district,thana)", type=["csv"])
     st.caption("Tip: Start with offline for speed, then auto for unresolved rows.")
 
-colL, colR = st.columns([1,1])
-go = colL.button("⚙️ Process & Download", type="primary")
-demo = colR.button("⬇️ Download Sample Gazetteer CSV")
+st.markdown("---")
 
-if demo:
-    # Offer the bundled sample CSV as a download
-    sample_path = "bangladesh_thana_district.sample.csv"
-    if os.path.exists(sample_path):
-        with open(sample_path, "rb") as f:
-            st.download_button("Download sample: bangladesh_thana_district.sample.csv", f, file_name="bangladesh_thana_district.sample.csv")
+# --- Two demo download buttons side by side ---
+colL, colR = st.columns(2)
+demo_gaz = colL.button("⬇️ Download Sample Gazetteer CSV")
+demo_addr = colR.button("📥 Download Sample Address File (Excel)")
 
-if go:
+if demo_gaz:
+    gaz_sample = "bangladesh_thana_district.sample.csv"
+    if os.path.exists(gaz_sample):
+        with open(gaz_sample, "rb") as f:
+            st.download_button(
+                "Download: bangladesh_thana_district.sample.csv",
+                f,
+                file_name="bangladesh_thana_district.sample.csv"
+            )
+
+if demo_addr:
+    addr_sample = "sample_addresses.xlsx"
+    if os.path.exists(addr_sample):
+        with open(addr_sample, "rb") as f:
+            st.download_button(
+                "Download: sample_addresses.xlsx",
+                f,
+                file_name="sample_addresses.xlsx"
+            )
+
+st.markdown("---")
+
+# ---- Run the enrichment process ----
+process = st.button("⚙️ Process & Download", type="primary")
+
+if process:
     if not uploaded:
         st.error("Please upload an Excel (.xlsx) file first.")
         st.stop()
 
-    with st.spinner("Processing..."):
-        # Save temp files
+    with st.spinner("Processing... Please wait..."):
         os.makedirs("tmp", exist_ok=True)
         in_path = os.path.join("tmp", "input.xlsx")
         with open(in_path, "wb") as f:
@@ -77,11 +93,10 @@ if go:
             with open(cache_path, "wb") as f:
                 f.write(cache_csv.getbuffer())
         else:
-            cache_path = "cache_geocode.csv"  # will be created/updated
+            cache_path = "cache_geocode.csv"
 
         out_path = os.path.join("tmp", "output.xlsx")
 
-        # Run enrichment
         enrich_run(
             input_xlsx=in_path,
             output_xlsx=out_path,
@@ -92,9 +107,8 @@ if go:
             sheet_index=int(sheet_index),
         )
 
-    # Offer the result
     with open(out_path, "rb") as f:
         st.download_button("⬇️ Download Enriched Excel", f, file_name="address_enriched.xlsx")
 
-    st.success("All set! You can now tweak modes or upload a larger CSV gazetteer for full coverage.")
-    st.markdown('<div class="footer-note">If many rows go to Online, please re-run later—cache speeds things up and respects OSM rate limits.</div>', unsafe_allow_html=True)
+    st.success("✅ Done! You can now tweak modes or upload a larger CSV gazetteer for full coverage.")
+    st.markdown('<div class="footer-note">If many rows go to Online, please re-run later — cache speeds things up and respects OSM limits.</div>', unsafe_allow_html=True)
