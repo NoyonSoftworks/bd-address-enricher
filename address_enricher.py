@@ -51,7 +51,7 @@ def normalize(s: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
-# Bangla → English hinting for OSM queries
+# Bangla → English hinting for OSM & output
 def bangla_normalize_text(s: str) -> str:
     if not isinstance(s, str):
         return ""
@@ -67,6 +67,24 @@ def bangla_normalize_text(s: str) -> str:
     for a, b in rep.items():
         s = s.replace(a, b)
     return s
+
+# Force English, canonical variants
+def to_english(s: str | None) -> str:
+    if not s or str(s).strip().lower() == "not found":
+        return "Not found"
+    txt = bangla_normalize_text(str(s).strip())
+    canon = {
+        "Chittagong": "Chattogram",
+        "Jessore": "Jashore",
+        "Barisal": "Barishal",
+        "Cumilla": "Comilla",
+        "Bogra": "Bogura",
+        "Cox'S Bazar": "Cox S Bazar",
+        "Cox's Bazar": "Cox S Bazar",
+    }
+    if txt in canon:
+        txt = canon[txt]
+    return txt.title()
 
 # ---------------- Data (districts/aliases/areas) ----------------
 DISTRICTS = [
@@ -91,6 +109,7 @@ DISTRICT_ALIASES = {
 }
 
 AREA_TO_DISTRICT = {
+    # Dhaka city (big set)
     "gulshan":"dhaka","banani":"dhaka","baridhara":"dhaka","badda":"dhaka","uttara":"dhaka","mirpur":"dhaka",
     "mohammadpur":"dhaka","tejgaon":"dhaka","dhanmondi":"dhaka","lalbagh":"dhaka","kafrul":"dhaka","cantonment":"dhaka",
     "airport":"dhaka","ramna":"dhaka","motijheel":"dhaka","paltan":"dhaka","sabujbagh":"dhaka","khilgaon":"dhaka",
@@ -98,14 +117,25 @@ AREA_TO_DISTRICT = {
     "kamrangirchar":"dhaka","adabor":"dhaka","hazaribagh":"dhaka","shahbag":"dhaka","banglamotor":"dhaka",
     "bansree":"dhaka","khilkhet":"dhaka","bosila":"dhaka","niketan":"dhaka","notun bazar":"dhaka",
     "bashundhara":"dhaka","bashundhara r/a":"dhaka","nakhalpara":"dhaka","tejgaon industrial area":"dhaka","zigatola":"dhaka",
+    # Gazipur
     "tongi":"gazipur","joydebpur":"gazipur","kaliakair":"gazipur","kaliganj":"gazipur","sreepur":"gazipur",
+    # Narayanganj
     "siddhirganj":"narayanganj","bandar":"narayanganj","fatulla":"narayanganj",
-    "kotwali":"chattogram","panchlaish":"chattogram","double mooring":"chattogram","pahartali":"chattogram","halishahar":"chattogram","patenga":"chattogram","bakalia":"chattogram","bandar thana":"chattogram","chandgaon":"chattogram","akbar shah":"chattogram","bayazid":"chattogram",
+    # Chattogram city
+    "kotwali":"chattogram","panchlaish":"chattogram","double mooring":"chattogram","pahartali":"chattogram",
+    "halishahar":"chattogram","patenga":"chattogram","bakalia":"chattogram","bandar thana":"chattogram",
+    "chandgaon":"chattogram","akbar shah":"chattogram","bayazid":"chattogram",
+    # Sylhet
     "kotwali sylhet":"sylhet","south surma":"sylhet","moglabazar":"sylhet","subidbazar":"sylhet",
+    # Rajshahi
     "boalia":"rajshahi","motihar":"rajshahi","rajpara":"rajshahi","shah makhdum":"rajshahi",
+    # Khulna
     "khalishpur":"khulna","daulatpur":"khulna","sonadanga":"khulna","khulna kotwali":"khulna",
+    # Barishal
     "barishal kotwali":"barishal","airport barishal":"barishal",
+    # Comilla
     "kotwali comilla":"comilla","adarsa sadar":"comilla",
+    # Others
     "sadar noakhali":"noakhali","sadar bogura":"bogura",
 }
 def expand_area_keys(area_to_district):
@@ -188,7 +218,10 @@ def save_cache(cache_path, cache_dict):
 # ---------------- Online (OSM) ----------------
 def nominatim_lookup(address):
     base = "https://nominatim.openstreetmap.org/search"
-    headers = {"User-Agent": "BD-Address-Enricher/1.1 (educational; contact: youremail@example.com)"}
+    headers = {
+        "User-Agent": "BD-Address-Enricher/1.1 (educational; contact: youremail@example.com)",
+        "Accept-Language": "en"  # always request English labels
+    }
 
     raw = (address or "").strip()
     attempts = [
@@ -216,8 +249,7 @@ def nominatim_lookup(address):
             t = (comp.get("suburb") or comp.get("neighbourhood") or comp.get("city_district") or
                  comp.get("municipality") or comp.get("borough") or comp.get("town") or
                  comp.get("city") or comp.get("village") or comp.get("police"))
-            def fix(x): return x.title() if x else None
-            return fix(d), fix(t)
+            return to_english(d), to_english(t)
         except Exception:
             time.sleep(1.1)
             continue
@@ -227,8 +259,8 @@ def nominatim_lookup(address):
 def offline_enrich(addr_norm, offline_map):
     d = guess_district_from_text(addr_norm)
     a = guess_area(addr_norm)
-    district_out = d.title() if d else "Not found"
-    thana_out = a.replace(" r a"," R/A").title().replace("R/a","R/A") if a else "Not found"
+    district_out = to_english(d) if d else "Not found"
+    thana_out = to_english(a.replace(" r a"," R/A")) if a else "Not found"
 
     # token scan using offline_map
     toks = addr_norm.replace(",", " ").split()
@@ -236,15 +268,15 @@ def offline_enrich(addr_norm, offline_map):
     for g in grams:
         g_norm = normalize(g)
         if g_norm in offline_map:
-            if thana_out == "Not found": thana_out = g_norm.title()
-            if district_out == "Not found": district_out = offline_map[g_norm].title()
+            if thana_out == "Not found": thana_out = to_english(g_norm)
+            if district_out == "Not found": district_out = to_english(offline_map[g_norm])
             break
     return district_out, thana_out
 
 def online_enrich(address, cache):
     if address in cache:
         d, t = cache[address]
-        return d or "Not found", t or "Not found"
+        return to_english(d), to_english(t)
     d, t = nominatim_lookup(address)
     time.sleep(1.1)  # be polite
     cache[address] = (d or "Not found", t or "Not found")
@@ -256,7 +288,7 @@ def run(input_xlsx, output_xlsx, address_col=None, mode="auto",
     xls = pd.ExcelFile(input_xlsx)
     df = pd.read_excel(xls, xls.sheet_names[sheet_index])
 
-    # find address col
+    # detect address column
     if address_col is None:
         for col in df.columns:
             c = str(col).strip().lower()
@@ -296,6 +328,10 @@ def run(input_xlsx, output_xlsx, address_col=None, mode="auto",
             d3, t3 = online_enrich(addr, cache)
             if district_out == "Not found" and d3: district_out = d3
             if thana_out == "Not found" and t3: thana_out = t3
+
+        # Always force English before writing
+        district_out = to_english(district_out)
+        thana_out    = to_english(thana_out)
 
         if not str(enriched.at[i, DIST_COL]).strip():
             enriched.at[i, DIST_COL] = district_out
