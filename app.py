@@ -105,6 +105,7 @@ with st.expander("🗂 Gazetteer & Cache (build • merge • grow)"):
         build_starter()
     if cB.button("➕ Merge Uploaded Gazetteers"):
         merge_gazetteers(gaz_files)
+
     # ---- Grow from cache ----
     with cC:
         if st.button("🔁 Grow Gazetteer from Cache"):
