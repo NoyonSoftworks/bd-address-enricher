@@ -1,6 +1,9 @@
-import io, os, pandas as pd, streamlit as st, requests
+import os
+import pandas as pd
+import streamlit as st
 from address_enricher import run as enrich_run
 
+# ---------------- Page Setup ----------------
 st.set_page_config(page_title="BD Address Enricher", page_icon="🗺️", layout="wide")
 
 st.markdown("""
@@ -16,41 +19,57 @@ st.markdown("<div style='text-align:center;'><span style='display:inline-block;p
             "border:1px solid #c7d2fe;'>Auto mode: Offline → Online fallback</span></div><hr>",
             unsafe_allow_html=True)
 
+# ---------------- Upload Controls ----------------
 uploaded = st.file_uploader("📤 Upload Excel (.xlsx) with an **Address** column", type=["xlsx"])
 c1, c2, c3 = st.columns(3)
-mode = c1.selectbox("Mode", ["auto","offline","online"], 0,
+mode = c1.selectbox("Mode", ["auto", "offline", "online"], 0,
                     help="auto = Offline first, then only missing via Online (OpenStreetMap)")
 address_col = c2.text_input("Address column name (optional; auto-detects)", value="")
 sheet_index = c3.number_input("Sheet index (0-based)", min_value=0, value=0, step=1)
 
+# ---------------- Gazetteer & Cache ----------------
 with st.expander("🗂 Gazetteer & Cache (optional)"):
     gaz = st.file_uploader("Upload `bangladesh_thana_district.csv` (thana/upazila/area,district)", type=["csv"])
     cache_csv = st.file_uploader("Upload existing `cache_geocode.csv` (address,district,thana)", type=["csv"])
     retry_flag = st.checkbox("Retry online for rows that remain Not found", value=True)
     st.caption("💡 Tip: Start with **offline** for speed, then **auto** for unresolved rows.")
 
-    # ---------- Fetch Full Gazetteer (robust to changing columns) ----------
+    # ---------- Fetch Full Gazetteer (robust; never numeric) ----------
     def fetch_full_gazetteer() -> pd.DataFrame:
         DIST_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/districts/districts.csv"
         UPAZ_URL = "https://raw.githubusercontent.com/nuhil/bangladesh-geocode/master/upazilas/upazilas.csv"
+
         dist = pd.read_csv(DIST_URL, encoding="utf-8", engine="python")
         upaz = pd.read_csv(UPAZ_URL, encoding="utf-8", engine="python")
 
-        def pick_name(cols):
+        # find columns by intent (handles: id, code, district_id, name, district_name, upazila_name, bn_name, etc.)
+        def find_col(df: pd.DataFrame, keywords: list[str], default_first=True):
+            cols = list(df.columns)
             for c in cols:
-                if "name" in c.lower(): return c
-            return cols[0]
+                lc = c.lower()
+                if any(k in lc for k in keywords):
+                    return c
+            return cols[0] if default_first else None
 
-        d_id   = next((c for c in dist.columns if c.lower() in ["id","district_id","code"]), dist.columns[0])
-        d_name = pick_name(list(dist.columns))
-        u_did  = next((c for c in upaz.columns if c.lower() in ["district_id","parent_id","district_code"]), upaz.columns[0])
-        u_name = pick_name(list(upaz.columns))
+        d_id   = find_col(dist, ["district_id", "id", "code"])
+        d_name = find_col(dist, ["district_name", "name"])     # prefer name-like
+        u_did  = find_col(upaz, ["district_id", "district_code", "parent_id"])
+        u_name = find_col(upaz, ["upazila_name", "upazila", "name"])  # prefer upazila name
 
         merged = upaz.merge(dist, left_on=u_did, right_on=d_id, how="left")
+
         df = pd.DataFrame({
             "thana": merged[u_name].astype(str).str.strip().str.title(),
             "district": merged[d_name].astype(str).str.strip().str.title()
-        }).dropna().drop_duplicates().sort_values(["district","thana"]).reset_index(drop=True)
+        }).dropna()
+
+        # remove numeric-only rows (e.g., "10", "2/45/5/162")
+        import re
+        numeric_only = re.compile(r"^\s*\d+([/.,-]\d+)*\s*$")
+        df = df[~df["thana"].str.match(numeric_only)]
+        df = df[~df["district"].str.match(numeric_only)]
+
+        df = df.drop_duplicates().sort_values(["district", "thana"]).reset_index(drop=True)
         return df
 
     if st.button("🌐 Fetch Full Gazetteer (All districts + all thanas)"):
@@ -71,6 +90,7 @@ with st.expander("🗂 Gazetteer & Cache (optional)"):
 
 st.markdown("---")
 
+# ---------------- Demo Downloads ----------------
 l, r = st.columns(2)
 if l.button("⬇️ Download Sample Gazetteer CSV"):
     p = "bangladesh_thana_district.sample.csv"
@@ -90,6 +110,7 @@ if r.button("📥 Download Sample Address File (Excel)"):
 
 st.markdown("---")
 
+# ---------------- Process Button ----------------
 if st.button("⚙️ Process & Download", type="primary"):
     if not uploaded:
         st.error("Please upload an Excel (.xlsx) file first.")
@@ -100,7 +121,7 @@ if st.button("⚙️ Process & Download", type="primary"):
             with open(in_path, "wb") as f:
                 f.write(uploaded.getbuffer())
 
-            # Gazetteer path (uploaded or built)
+            # Gazetteer (uploaded or freshly built)
             gaz_path = None
             built = os.path.join("tmp", "bangladesh_thana_district.csv")
             if gaz is not None:
@@ -110,6 +131,7 @@ if st.button("⚙️ Process & Download", type="primary"):
             elif os.path.exists(built):
                 gaz_path = built
 
+            # Cache
             cache_path = None
             if cache_csv is not None:
                 cache_path = os.path.join("tmp", "cache_geocode.csv")
@@ -134,6 +156,7 @@ if st.button("⚙️ Process & Download", type="primary"):
             st.download_button("⬇️ Download Enriched Excel", f, file_name="address_enriched.xlsx")
         st.success("✅ Done! Offline + Online enrichment completed.")
 
+# ---------------- Footer ----------------
 st.markdown("---")
 st.markdown("<div style='text-align:center;color:#475569;font-size:13px;'>"
             "Made with ❤️ by <b>NoyonSoftworks</b> | Powered by Streamlit & OpenStreetMap</div>",
