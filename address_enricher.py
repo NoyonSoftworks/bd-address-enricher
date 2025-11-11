@@ -9,23 +9,22 @@ Modes:
   - offline       : Only offline (text heuristics + CSV gazetteer)
   - online        : Only online (OpenStreetMap Nominatim + cache)
 
-CLI Examples:
-  python address_enricher.py --input INPUT.xlsx --output OUTPUT.xlsx                 # auto
-  python address_enricher.py --input INPUT.xlsx --output OUTPUT.xlsx --mode offline  # force offline
-  python address_enricher.py --input INPUT.xlsx --output OUTPUT.xlsx --mode online   # force online
+CLI:
+  python address_enricher.py --input INPUT.xlsx --output OUTPUT.xlsx
+  python address_enricher.py --input INPUT.xlsx --output OUTPUT.xlsx --mode offline
+  python address_enricher.py --input INPUT.xlsx --output OUTPUT.xlsx --mode online
 
 Optional:
   --csv-gazetteer bangladesh_thana_district.csv
   --cache cache_geocode.csv
   --address-col "Address"
   --sheet-index 0
-  --retry-online-notfound   (extra online pass for rows still "Not found")
+  --retry-online-notfound
 """
 
 import os, re, csv, time, argparse, requests
 import pandas as pd
 from difflib import get_close_matches
-
 
 # ---------------- Utilities ----------------
 def normalize(s: str) -> str:
@@ -52,8 +51,7 @@ def normalize(s: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
-
-# ছোট বাংলা→ইংরেজি হিন্ট (OSM জন্য)
+# Bangla → English hinting for OSM queries
 def bangla_normalize_text(s: str) -> str:
     if not isinstance(s, str):
         return ""
@@ -70,8 +68,7 @@ def bangla_normalize_text(s: str) -> str:
         s = s.replace(a, b)
     return s
 
-
-# ---------------- Data (districts, aliases, areas) ----------------
+# ---------------- Data (districts/aliases/areas) ----------------
 DISTRICTS = [
     "dhaka","gazipur","narayanganj","munshiganj","manikganj","narshingdi","kishoreganj","tangail",
     "mymensingh","jamalpur","netrokona","sherpur",
@@ -93,9 +90,7 @@ DISTRICT_ALIASES = {
     "cox's bazar": "cox s bazar",
 }
 
-# বড় শহরের কমন এরিয়া → জেলা
 AREA_TO_DISTRICT = {
-    # Dhaka city
     "gulshan":"dhaka","banani":"dhaka","baridhara":"dhaka","badda":"dhaka","uttara":"dhaka","mirpur":"dhaka",
     "mohammadpur":"dhaka","tejgaon":"dhaka","dhanmondi":"dhaka","lalbagh":"dhaka","kafrul":"dhaka","cantonment":"dhaka",
     "airport":"dhaka","ramna":"dhaka","motijheel":"dhaka","paltan":"dhaka","sabujbagh":"dhaka","khilgaon":"dhaka",
@@ -103,37 +98,25 @@ AREA_TO_DISTRICT = {
     "kamrangirchar":"dhaka","adabor":"dhaka","hazaribagh":"dhaka","shahbag":"dhaka","banglamotor":"dhaka",
     "bansree":"dhaka","khilkhet":"dhaka","bosila":"dhaka","niketan":"dhaka","notun bazar":"dhaka",
     "bashundhara":"dhaka","bashundhara r/a":"dhaka","nakhalpara":"dhaka","tejgaon industrial area":"dhaka","zigatola":"dhaka",
-    # Gazipur
     "tongi":"gazipur","joydebpur":"gazipur","kaliakair":"gazipur","kaliganj":"gazipur","sreepur":"gazipur",
-    # Narayanganj
     "siddhirganj":"narayanganj","bandar":"narayanganj","fatulla":"narayanganj",
-    # Chattogram
     "kotwali":"chattogram","panchlaish":"chattogram","double mooring":"chattogram","pahartali":"chattogram","halishahar":"chattogram","patenga":"chattogram","bakalia":"chattogram","bandar thana":"chattogram","chandgaon":"chattogram","akbar shah":"chattogram","bayazid":"chattogram",
-    # Sylhet
     "kotwali sylhet":"sylhet","south surma":"sylhet","moglabazar":"sylhet","subidbazar":"sylhet",
-    # Rajshahi
     "boalia":"rajshahi","motihar":"rajshahi","rajpara":"rajshahi","shah makhdum":"rajshahi",
-    # Khulna
     "khalishpur":"khulna","daulatpur":"khulna","sonadanga":"khulna","khulna kotwali":"khulna",
-    # Barishal
     "barishal kotwali":"barishal","airport barishal":"barishal",
-    # Comilla
     "kotwali comilla":"comilla","adarsa sadar":"comilla",
-    # Others
     "sadar noakhali":"noakhali","sadar bogura":"bogura",
 }
-
 def expand_area_keys(area_to_district):
     expanded = {}
     for k, v in area_to_district.items():
         for variant in {k, k.replace("-", " "), k.replace(" ", ""), k.replace("/", " ")}:
             expanded[normalize(variant)] = v
     return expanded
-
 EXPANDED_AREA = expand_area_keys(AREA_TO_DISTRICT)
 AREA_KEYS = list(set(EXPANDED_AREA.keys()))
 DISTRICT_KEYS = list(set([normalize(d) for d in DISTRICTS] + list(DISTRICT_ALIASES.keys())))
-
 
 # ---------------- Guessers (offline text) ----------------
 def guess_area(addr_norm: str) -> str | None:
@@ -149,7 +132,6 @@ def guess_area(addr_norm: str) -> str | None:
             return m[0]
     return None
 
-
 def guess_district_from_text(addr_norm: str) -> str | None:
     for d in DISTRICT_KEYS:
         if re.search(rf"\b{re.escape(d)}\b", addr_norm):
@@ -163,7 +145,6 @@ def guess_district_from_text(addr_norm: str) -> str | None:
         if m:
             return m[0]
     return None
-
 
 # ---------------- Gazetteer (offline CSV) ----------------
 def load_csv_gazetteer(path: str):
@@ -185,7 +166,6 @@ def make_offline_index(csv_rows):
         mapping[th] = dist
     return mapping
 
-
 # ---------------- Cache (for online) ----------------
 def load_cache(cache_path):
     cache = {}
@@ -204,7 +184,6 @@ def save_cache(cache_path, cache_dict):
         w.writerow(["address", "district", "thana"])
         for k, (d, t) in cache_dict.items():
             w.writerow([k, d, t])
-
 
 # ---------------- Online (OSM) ----------------
 def nominatim_lookup(address):
@@ -244,7 +223,6 @@ def nominatim_lookup(address):
             continue
     return None, None
 
-
 # ---------------- Enrichment logic ----------------
 def offline_enrich(addr_norm, offline_map):
     d = guess_district_from_text(addr_norm)
@@ -263,16 +241,14 @@ def offline_enrich(addr_norm, offline_map):
             break
     return district_out, thana_out
 
-
 def online_enrich(address, cache):
     if address in cache:
         d, t = cache[address]
         return d or "Not found", t or "Not found"
     d, t = nominatim_lookup(address)
-    time.sleep(1.1)  # Be polite to OSM
+    time.sleep(1.1)  # be polite
     cache[address] = (d or "Not found", t or "Not found")
     return cache[address]
-
 
 def run(input_xlsx, output_xlsx, address_col=None, mode="auto",
         gazetteer_csv=None, cache_path=None, sheet_index=0,
@@ -280,7 +256,7 @@ def run(input_xlsx, output_xlsx, address_col=None, mode="auto",
     xls = pd.ExcelFile(input_xlsx)
     df = pd.read_excel(xls, xls.sheet_names[sheet_index])
 
-    # Find address column
+    # find address col
     if address_col is None:
         for col in df.columns:
             c = str(col).strip().lower()
@@ -315,7 +291,7 @@ def run(input_xlsx, output_xlsx, address_col=None, mode="auto",
                 if district_out == "Not found": district_out = d2
                 if thana_out == "Not found": thana_out = t2
 
-        # Extra safety pass (still Not found): try online once more
+        # Extra pass for stubborn "Not found"
         if retry_online_notfound and (district_out == "Not found" or thana_out == "Not found") and mode != "online":
             d3, t3 = online_enrich(addr, cache)
             if district_out == "Not found" and d3: district_out = d3
@@ -326,14 +302,12 @@ def run(input_xlsx, output_xlsx, address_col=None, mode="auto",
         if not str(enriched.at[i, THANA_COL]).strip():
             enriched.at[i, THANA_COL] = thana_out
 
-    # Write output
     with pd.ExcelWriter(output_xlsx, engine="xlsxwriter") as writer:
         df.to_excel(writer, sheet_name="Original", index=False)
         enriched.to_excel(writer, sheet_name="Enriched", index=False)
 
     if cache_path:
         save_cache(cache_path, cache)
-
 
 # ---------------- CLI ----------------
 if __name__ == "__main__":
