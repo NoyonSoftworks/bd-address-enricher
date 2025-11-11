@@ -42,21 +42,14 @@ def to_english(s: str | None) -> str:
     if not s or str(s).strip().lower() == "not found":
         return "Not found"
     txt = bangla_normalize_text(str(s).strip())
-    canon = {
-        "Chittagong": "Chattogram",
-        "Jessore": "Jashore",
-        "Barisal": "Barishal",
-        "Cumilla": "Comilla",
-        "Bogra": "Bogura",
-        "Cox'S Bazar": "Cox S Bazar",
-        "Cox's Bazar": "Cox S Bazar",
-    }
+    canon = {"Chittagong": "Chattogram","Jessore": "Jashore","Barisal": "Barishal",
+             "Cumilla": "Comilla","Bogra": "Bogura","Cox'S Bazar":"Cox S Bazar","Cox's Bazar": "Cox S Bazar"}
     txt = canon.get(txt, txt)
     return txt.title()
 
 # ---------------- Data seeds ----------------
 DISTRICTS = [
-    "dhaka","gazipur","narayanganj","munshiganj","manikganj","narshingdi","kishoreganj","tangail",
+    "dhaka","gazipur","narayanganj","munshiganj","manikganj","narsingdi","kishoreganj","tangail",
     "mymensingh","jamalpur","netrokona","sherpur","faridpur","madaripur","gopalganj","rajbari","shariatpur",
     "chattogram","cox s bazar","feni","noakhali","lakshmipur","rangamati","khagrachhari","bandarban","comilla","brahmanbaria",
     "sylhet","moulvibazar","habiganj","sunamganj","khulna","jashore","satkhira","bagerhat","chuadanga","kushtia",
@@ -70,32 +63,25 @@ DISTRICT_ALIASES = {
 }
 
 AREA_TO_DISTRICT = {
-    # Dhaka city
+    # Dhaka city (a few common)
     "gulshan":"dhaka","banani":"dhaka","baridhara":"dhaka","badda":"dhaka","uttara":"dhaka","mirpur":"dhaka",
-    "mohammadpur":"dhaka","tejgaon":"dhaka","dhanmondi":"dhaka","lalbagh":"dhaka","kafrul":"dhaka","cantonment":"dhaka",
-    "airport":"dhaka","ramna":"dhaka","motijheel":"dhaka","paltan":"dhaka","sabujbagh":"dhaka","khilgaon":"dhaka",
-    "rampura":"dhaka","jatrabari":"dhaka","mugda":"dhaka","wari":"dhaka","demra":"dhaka","shyampur":"dhaka",
-    "kamrangirchar":"dhaka","adabor":"dhaka","hazaribagh":"dhaka","shahbag":"dhaka","banglamotor":"dhaka",
-    "bansree":"dhaka","khilkhet":"dhaka","bosila":"dhaka","niketan":"dhaka",
-    "bashundhara":"dhaka","bashundhara r/a":"dhaka","nakhalpara":"dhaka","tejgaon industrial area":"dhaka","zigatola":"dhaka",
-    # Gazipur
+    "mohammadpur":"dhaka","tejgaon":"dhaka","dhanmondi":"dhaka","lalbagh":"dhaka","kafrul":"dhaka",
+    "cantonment":"dhaka","airport":"dhaka","ramna":"dhaka","motijheel":"dhaka","paltan":"dhaka",
+    "sabujbagh":"dhaka","khilgaon":"dhaka","rampura":"dhaka","jatrabari":"dhaka","wari":"dhaka",
+    "demra":"dhaka","shyampur":"dhaka","kamrangirchar":"dhaka","adabor":"dhaka","hazaribagh":"dhaka",
+    "shahbag":"dhaka","banglamotor":"dhaka","bansree":"dhaka","khilkhet":"dhaka","bosila":"dhaka",
+    "bashundhara":"dhaka","bashundhara r/a":"dhaka","niketan":"dhaka","nakhalpara":"dhaka",
+    "tejgaon industrial area":"dhaka","zigatola":"dhaka",
+    # Others (sample set)
     "tongi":"gazipur","joydebpur":"gazipur","kaliakair":"gazipur","kaliganj":"gazipur","sreepur":"gazipur",
-    # Narayanganj
     "siddhirganj":"narayanganj","bandar":"narayanganj","fatulla":"narayanganj",
-    # Chattogram city
     "kotwali":"chattogram","panchlaish":"chattogram","double mooring":"chattogram","pahartali":"chattogram",
-    "halishahar":"chattogram","patenga":"chattogram","bakalia":"chattogram","bandar thana":"chattogram",
-    "chandgaon":"chattogram","akbar shah":"chattogram","bayazid":"chattogram",
-    # Sylhet city
+    "halishahar":"chattogram","patenga":"chattogram","bakalia":"chattogram","chandgaon":"chattogram","bayazid":"chattogram",
     "kotwali sylhet":"sylhet","south surma":"sylhet","moglabazar":"sylhet","subidbazar":"sylhet",
-    # Rajshahi city
     "boalia":"rajshahi","motihar":"rajshahi","rajpara":"rajshahi","shah makhdum":"rajshahi",
-    # Khulna city
     "khalishpur":"khulna","daulatpur":"khulna","sonadanga":"khulna","khulna kotwali":"khulna",
-    # Others
     "barishal kotwali":"barishal","airport barishal":"barishal",
-    "kotwali comilla":"comilla","adarsa sadar":"comilla",
-    "sadar noakhali":"noakhali","sadar bogura":"bogura",
+    "kotwali comilla":"comilla","adarsa sadar":"comilla","sadar noakhali":"noakhali","sadar bogura":"bogura",
 }
 def _expand(area_to_district):
     out = {}
@@ -140,29 +126,25 @@ def load_csv_gazetteer(path: str):
     rows = []
     if not path or not os.path.exists(path):
         return rows
-    # try pandas (utf-8, utf-8-sig)
     for enc in ("utf-8", "utf-8-sig"):
         try:
             df = pd.read_csv(path, encoding=enc, engine="python", on_bad_lines="skip")
             cols = {c.lower(): c for c in df.columns}
             th_col = cols.get("thana") or cols.get("upazila") or cols.get("area") or list(df.columns)[0]
             di_col = cols.get("district") or list(df.columns)[1]
+            numeric = re.compile(r"^\s*\d+([/.,-]\d+)*\s*$")
             for _, r in df[[th_col, di_col]].dropna().iterrows():
-                th = normalize(str(r[th_col]))
-                di = normalize(str(r[di_col]))
+                th_raw = str(r[th_col]).strip()
+                di_raw = str(r[di_col]).strip()
+                if numeric.fullmatch(th_raw) or numeric.fullmatch(di_raw):
+                    continue
+                th = normalize(th_raw)
+                di = normalize(di_raw)
                 if th and di:
                     rows.append((th, di))
             return rows
         except Exception:
             continue
-    # fallback csv
-    with open(path, newline="", encoding="utf-8", errors="ignore") as f:
-        r = csv.DictReader(f)
-        for row in r:
-            th = normalize(row.get("thana") or row.get("upazila") or row.get("area") or "")
-            di = normalize(row.get("district") or "")
-            if th and di:
-                rows.append((th, di))
     return rows
 
 def make_offline_index(csv_rows):
@@ -303,7 +285,7 @@ def run(input_xlsx, output_xlsx, address_col=None, mode="auto",
         district_out = to_english(district_out)
         thana_out    = to_english(thana_out)
 
-        # 🚫 numeric-only cleanup (e.g., "6", "2/45/5/162")
+        # numeric-only cleanup
         if NUMERIC_ONLY.fullmatch(str(thana_out).strip()):   thana_out = "Not found"
         if NUMERIC_ONLY.fullmatch(str(district_out).strip()): district_out = "Not found"
 
